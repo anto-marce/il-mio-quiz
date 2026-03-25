@@ -13,7 +13,6 @@ def prepara_dati():
     if not os.path.exists("quiz.csv"):
         return "ERRORE: Non trovo il file quiz.csv su GitHub."
 
-    # 1. Legge TUTTO il file come un unico grande blocco di testo
     try:
         with open("quiz.csv", "r", encoding="utf-8-sig") as f:
             testo_intero = f.read()
@@ -21,12 +20,9 @@ def prepara_dati():
         with open("quiz.csv", "r", encoding="latin-1") as f:
             testo_intero = f.read()
             
-    # Togliamo le virgolette (") che Excel inserisce per disturbare
     testo_intero = testo_intero.replace('"', ' ')
     
     lista = []
-    # 2. Questo "filtro" cerca il blocco logico: Numero -> Domanda -> a) -> b) -> c)
-    # È progettato per non fermarsi di fronte a virgole, punti o a capo strani.
     pattern = r"(\d{1,3})\s+(.*?)\s+[Aa]\s*[\)\.]\s*(.*?)\s+[Bb]\s*[\)\.]\s*(.*?)\s+[Cc]\s*[\)\.]\s*(.*?)(?=\s+\d{1,3}\s+(?:.*?)[Aa]\s*[\)\.]|$)"
     
     trovate = re.finditer(pattern, testo_intero, re.DOTALL | re.IGNORECASE)
@@ -38,3 +34,54 @@ def prepara_dati():
             "q": m.group(2).strip(),
             "a": m.group(3).strip(),
             "b": m.group(4).strip(),
+            "c": m.group(5).strip(),
+            "corretta": RISPOSTE.get(id_q, "A")
+        })
+        
+    if len(lista) == 0:
+        return "Nessuna domanda trovata. Il file sembra essere vuoto o non ha il formato giusto."
+        
+    return lista
+
+# --- INTERFACCIA APP ---
+st.set_page_config(page_title="Quiz Tartufo", layout="centered")
+st.title("🍄 Quiz Tesserino Tartufo")
+
+risultato = prepara_dati()
+
+if isinstance(risultato, str):
+    st.error(risultato)
+else:
+    if 'quiz_db' not in st.session_state:
+        st.session_state.quiz_db = risultato
+        random.shuffle(st.session_state.quiz_db)
+        st.session_state.indice = 0
+        st.session_state.punti = 0
+
+    if st.session_state.indice < len(st.session_state.quiz_db):
+        item = st.session_state.quiz_db[st.session_state.indice]
+        st.write(f"### Domanda {st.session_state.indice + 1} di {len(st.session_state.quiz_db)}")
+        st.info(item['q'])
+        
+        opzioni = [f"A) {item['a']}", f"B) {item['b']}", f"C) {item['c']}"]
+        scelta = st.radio("Seleziona la risposta corretta:", opzioni, index=None, key=f"q_{st.session_state.indice}")
+        
+        if st.button("Conferma Risposta", use_container_width=True):
+            if scelta:
+                if scelta[0] == item['corretta']:
+                    st.success("✅ Esatto!")
+                    st.session_state.punti += 1
+                else:
+                    st.error(f"❌ Sbagliato! La risposta corretta era la {item['corretta']}")
+                
+                st.session_state.indice += 1
+                st.button("Prossima domanda")
+            else:
+                st.warning("Devi selezionare una risposta prima di confermare!")
+    else:
+        st.balloons()
+        st.header("🏆 Quiz Terminato!")
+        st.write(f"Hai totalizzato **{st.session_state.punti}** su **{len(st.session_state.quiz_db)}**.")
+        if st.button("Ricomincia il Quiz"):
+            del st.session_state.quiz_db
+            st.rerun()
