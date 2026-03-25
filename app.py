@@ -10,7 +10,6 @@ RISPOSTE = {
 }
 
 def pulisci_testo(t):
-    # Rimuove virgolette e spazi multipli che rendono le domande brutte
     t = t.replace('"', '').replace('  ', ' ')
     return t.strip()
 
@@ -21,25 +20,25 @@ def prepara_dati():
         with open("quiz.csv", "r", encoding="utf-8-sig") as f: testo = f.read()
     except:
         with open("quiz.csv", "r", encoding="latin-1") as f: testo = f.read()
-    
     lista = []
-    # Pattern migliorato per catturare meglio i testi sporchi di Excel
     pattern = r"(\d{1,3})\s+(.*?)\s+[Aa]\s*[\)\.]\s*(.*?)\s+[Bb]\s*[\)\.]\s*(.*?)\s+[Cc]\s*[\)\.]\s*(.*?)(?=\s+\d{1,3}\s+(?:.*?)[Aa]\s*[\)\.]|$)"
     trovate = re.finditer(pattern, testo, re.DOTALL | re.IGNORECASE)
-    
     for m in trovate:
         id_q = m.group(1).strip()
         lista.append({
-            "id": id_q,
-            "q": pulisci_testo(m.group(2)),
-            "a": pulisci_testo(m.group(3)),
-            "b": pulisci_testo(m.group(4)),
-            "c": pulisci_testo(m.group(5)),
-            "corretta": RISPOSTE.get(id_q, "A")
+            "id": id_q, "q": pulisci_testo(m.group(2)), "a": pulisci_testo(m.group(3)),
+            "b": pulisci_testo(m.group(4)), "c": pulisci_testo(m.group(5)), "corretta": RISPOSTE.get(id_q, "A")
         })
     return lista
 
 st.set_page_config(page_title="Simulatore Esame Tartufo", layout="centered")
+
+# Funzione di reset
+def reset_quiz():
+    st.session_state.esame_attivo = False
+    st.session_state.indice = 0
+    st.session_state.errori = 0
+    st.session_state.risposta_data = False
 
 if 'esame_attivo' not in st.session_state:
     st.session_state.esame_attivo = False
@@ -56,20 +55,28 @@ def inizia_esame():
         st.session_state.finito = False
         st.session_state.risposta_data = False
 
-# --- UI ---
+# --- BARRA LATERALE ---
+with st.sidebar:
+    st.header("Comandi")
+    if st.session_state.esame_attivo:
+        if st.button("🔄 RICOMINCIA DA CAPO", type="primary", use_container_width=True):
+            reset_quiz()
+            st.rerun()
+    st.markdown("---")
+    st.write("Sviluppato per il superamento del tesserino tartufo.")
+
+# --- UI PRINCIPALE ---
 if not st.session_state.esame_attivo:
     st.title("🍄 Simulatore Esame Tartufo")
-    st.info("Configurazione: 30 domande | 30 minuti | Max 4 errori")
-    if st.button("INIZIA SIMULAZIONE", use_container_width=True):
+    st.info("Regole: 30 domande estratte a sorte, 30 minuti, massimo 4 errori ammessi.")
+    if st.button("INIZIA SIMULAZIONE ESAME", use_container_width=True):
         inizia_esame()
         st.rerun()
 else:
-    # Timer
     trascorso = time.time() - st.session_state.inizio_tempo
     rimanente = max(0, 1800 - int(trascorso))
     mins, secs = divmod(rimanente, 60)
     
-    # Header
     c1, c2, c3 = st.columns(3)
     c1.metric("Domanda", f"{st.session_state.indice + 1}/30")
     c2.metric("Tempo", f"{mins:02d}:{secs:02d}")
@@ -83,8 +90,6 @@ else:
         st.markdown(f"### {item['q']}")
         
         opzioni = [f"A) {item['a']}", f"B) {item['b']}", f"C) {item['c']}"]
-        
-        # Disabilita il radio dopo la conferma per evitare cambi
         scelta = st.radio("Scegli la risposta:", opzioni, index=None, key=f"r_{st.session_state.indice}", disabled=st.session_state.risposta_data)
         
         if not st.session_state.risposta_data:
@@ -98,16 +103,15 @@ else:
                         st.session_state.errori += 1
                     st.rerun()
                 else:
-                    st.warning("Seleziona un'opzione!")
+                    st.warning("Devi selezionare un'opzione!")
         else:
-            # Feedback visivo
             corretta = item['corretta']
             if st.session_state.ultima_scelta == corretta:
-                st.success(f"✅ CORRETTO! La risposta è {corretta}")
+                st.success(f"✅ CORRETTO! La risposta corretta è {corretta}")
             else:
-                st.error(f"❌ SBAGLIATO! La tua risposta: {st.session_state.ultima_scelta}. La risposta corretta è: {corretta}")
+                st.error(f"❌ SBAGLIATO! Hai risposto {st.session_state.ultima_scelta}. La risposta corretta era la {corretta}")
             
-            if st.button("Vai alla Prossima →", use_container_width=True):
+            if st.button("Prossima Domanda →", use_container_width=True):
                 st.session_state.indice += 1
                 st.session_state.risposta_data = False
                 st.rerun()
@@ -115,12 +119,10 @@ else:
         st.divider()
         if st.session_state.errori < 5 and rimanente > 0:
             st.balloons()
-            st.header("🏆 ESAME SUPERATO!")
-            st.write(f"Ottimo lavoro! Hai risposto correttamente a {st.session_state.punti} domande su 30.")
+            st.success(f"🎊 ESAME SUPERATO! Punti: {st.session_state.punti}/30")
         else:
-            st.header("❌ ESAME FALLITO")
-            st.write(f"Hai commesso {st.session_state.errori} errori. Riprova per migliorare!")
+            st.error(f"💀 ESAME NON SUPERATO. Hai commesso {st.session_state.errori} errori.")
         
-        if st.button("Torna al Menu"):
-            st.session_state.esame_attivo = False
+        if st.button("Ritorna al Menu Principale"):
+            reset_quiz()
             st.rerun()
