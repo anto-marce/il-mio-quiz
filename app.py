@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import re
 import random
+import os
 
-# --- 1. TUTTE LE 318 RISPOSTE (CARICATE) ---
+# --- 1. DATABASE RISPOSTE (Tutte le 318) ---
 RISPOSTE = {
     "1":"C","2":"A","3":"B","4":"C","5":"A","6":"B","7":"A","8":"B","9":"C","10":"B","11":"B","12":"A","13":"C","14":"A","15":"A","16":"B","17":"B","18":"C","19":"A","20":"C","21":"B","22":"A","23":"C","24":"A","25":"C","26":"B","27":"B","28":"B","29":"A","30":"B","31":"C","32":"A","33":"C",
     "34":"B","35":"B","36":"A","37":"B","38":"C","39":"B","40":"A","41":"A","42":"B","43":"C","44":"C","45":"B","46":"A","47":"C","48":"A","49":"A","50":"B","51":"B","52":"C","53":"A","54":"C","55":"B","56":"A","57":"B","58":"C","59":"B","60":"A","61":"C","62":"C","63":"C","64":"B","65":"A","66":"B","67":"B","68":"C","69":"C","70":"A","71":"A","72":"B","73":"C","74":"A","75":"A","76":"B","77":"B","78":"C","79":"A","80":"A","81":"B","82":"A","83":"A","84":"C","85":"A","86":"A","87":"B","88":"C","89":"A","90":"B","91":"A","92":"B",
@@ -13,21 +14,29 @@ RISPOSTE = {
 
 @st.cache_data
 def prepara_dati():
-    # Leggiamo il file come testo puro per evitare errori con le virgole
+    lista = []
+    # 1. Controlliamo se il file esiste
+    if not os.path.exists("quiz.csv"):
+        return "ERRORE: Il file quiz.csv non esiste su GitHub!"
+    
+    # 2. Proviamo a leggere il file riga per riga
     try:
         with open("quiz.csv", "r", encoding="utf-8") as f:
             linee = f.readlines()
     except:
         with open("quiz.csv", "r", encoding="latin-1") as f:
             linee = f.readlines()
-            
-    lista = []
+
     for riga in linee:
-        riga = riga.strip().strip('"') # Pulisce la riga da spazi e virgolette di Excel
-        # Cerca Numero, Domanda e le tre opzioni a) b) c)
-        m = re.search(r"(\d+)\s+(.*?)\s+a\)\s+(.*?)\s+b\)\s+(.*?)\s+c\)\s+(.*)", riga, re.DOTALL)
+        riga = riga.strip()
+        if not riga: continue
+        
+        # Questa nuova REGEX è molto più potente e ignora spazi o virgolette extra
+        # Cerca un numero, poi del testo, poi a) testo b) testo c) testo
+        m = re.search(r"(\d+)\s+(.*?)\s+[Aa]\s*\)\s*(.*?)\s+[Bb]\s*\)\s*(.*?)\s+[Cc]\s*\)\s*(.*)", riga, re.DOTALL | re.IGNORECASE)
+        
         if m:
-            id_q = m.group(1)
+            id_q = m.group(1).strip()
             lista.append({
                 "id": id_q,
                 "q": m.group(2).strip(),
@@ -36,48 +45,52 @@ def prepara_dati():
                 "c": m.group(5).strip(),
                 "corretta": RISPOSTE.get(id_q, "A")
             })
+    
+    if len(lista) == 0:
+        return f"ERRORE: Trovate {len(linee)} righe, ma nessuna corrisponde al formato. Prima riga letta: {linee[0][:50]}..."
+    
     return lista
 
 # --- INTERFACCIA ---
 st.set_page_config(page_title="Quiz Tartufo", layout="centered")
 st.title("🍄 Quiz Tesserino Tartufo")
 
-if 'db' not in st.session_state:
-    st.session_state.db = prepara_dati()
-    if not st.session_state.db:
-        st.error("Errore: Non sono riuscito a leggere le domande dal file quiz.csv. Controlla il formato!")
-    else:
-        random.shuffle(st.session_state.db)
-    st.session_state.i = 0
-    st.session_state.punti = 0
+risultato = prepara_dati()
 
-if st.session_state.i < len(st.session_state.db):
-    item = st.session_state.db[st.session_state.i]
-    st.write(f"### Domanda {item['id']}")
-    st.info(item['q'])
-    
-    opzioni = [f"A) {item['a']}", f"B) {item['b']}", f"C) {item['c']}"]
-    scelta = st.radio("Scegli la risposta corretta:", opzioni, index=None)
-    
-    if st.button("Conferma Risposta", use_container_width=True):
-        if scelta:
-            lettera = scelta[0]
-            if lettera == item['corretta']:
-                st.success("✅ ESATTO!")
-                st.session_state.punti += 1
-            else:
-                st.error(f"❌ SBAGLIATO! La risposta corretta era la {item['corretta']}")
-            
-            st.session_state.i += 1
-            st.button("Avanti")
-        else:
-            st.warning("Seleziona una risposta!")
+if isinstance(risultato, str):
+    st.error(risultato)
+    st.info("Assicurati che il file caricato su GitHub si chiami esattamente quiz.csv")
 else:
-    st.balloons()
-    st.header("🏆 Quiz Terminato!")
-    st.write(f"Hai totalizzato {st.session_state.punti} punti su {len(st.session_state.db)}.")
-    if st.button("Ricomincia"):
+    if 'db' not in st.session_state:
+        st.session_state.db = risultato
+        random.shuffle(st.session_state.db)
         st.session_state.i = 0
         st.session_state.punti = 0
-        random.shuffle(st.session_state.db)
-        st.rerun()
+
+    if st.session_state.i < len(st.session_state.db):
+        item = st.session_state.db[st.session_state.i]
+        st.write(f"### Domanda {item['id']} (di {len(st.session_state.db)})")
+        st.info(item['q'])
+        
+        opzioni = [f"A) {item['a']}", f"B) {item['b']}", f"C) {item['c']}"]
+        scelta = st.radio("Scegli la risposta:", opzioni, index=None, key=f"r_{st.session_state.i}")
+        
+        if st.button("Conferma Risposta", use_container_width=True):
+            if scelta:
+                if scelta[0] == item['corretta']:
+                    st.success("✅ ESATTO!")
+                    st.session_state.punti += 1
+                else:
+                    st.error(f"❌ SBAGLIATO! La risposta corretta era la {item['corretta']}")
+                
+                st.session_state.i += 1
+                st.button("Vai alla prossima")
+            else:
+                st.warning("Seleziona una risposta!")
+    else:
+        st.balloons()
+        st.header("🏆 Quiz Terminato!")
+        st.write(f"Hai totalizzato **{st.session_state.punti}** punti su **{len(st.session_state.db)}**.")
+        if st.button("Ricomincia il Quiz"):
+            del st.session_state.db
+            st.rerun()
